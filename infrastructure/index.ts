@@ -92,7 +92,7 @@ const containerGroup = new containerinstance.ContainerGroup(
           },
           {
             name: 'WEATHER_API_KEY',
-            value: '<your-secret-key>',
+            value: '2c3a298ef60704a19c239e288c0da981',
           },
         ],
         resources: {
@@ -118,3 +118,8 @@ const containerGroup = new containerinstance.ContainerGroup(
 
 export const acrServer = registry.loginServer
 export const acrUsername = registryCredentials.username
+export const hostname = containerGroup.ipAddress.apply((addr) => addr!.fqdn!)
+export const ip = containerGroup.ipAddress.apply((addr) => addr!.ip!)
+export const url = containerGroup.ipAddress.apply(
+  (addr) => `http://${addr!.fqdn!}:${containerPort}`,
+)
