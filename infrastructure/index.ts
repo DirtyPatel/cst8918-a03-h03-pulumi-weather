@@ -1,6 +1,8 @@
 import * as pulumi from "@pulumi/pulumi";
 import * as resources from '@pulumi/azure-native/resources'
 import * as containerregistry from '@pulumi/azure-native/containerregistry'
+import * as dockerBuild from '@pulumi/docker-build'
+import * as containerinstance from '@pulumi/azure-native/containerinstance'
 
 
 
@@ -16,6 +18,7 @@ const containerPort = config.requireNumber('containerPort')
 const publicPort = config.requireNumber('publicPort')
 const cpu = config.requireNumber('cpu')
 const memory = config.requireNumber('memory')
+
 
 // Create a resource group.
 const resourceGroup = new resources.ResourceGroup(`${prefixName}-rg`)
@@ -42,5 +45,76 @@ const registryCredentials = containerregistry
     }
   })
 
-  export const acrServer = registry.loginServer
+  // Define the container image for the service.
+const image = new dockerBuild.Image(`${prefixName}-image`, {
+  tags: [pulumi.interpolate`${registry.loginServer}/${imageName}:${imageTag}`],
+  context: { location: appPath },
+  dockerfile: { location: `${appPath}/Dockerfile` },
+  target: 'production',
+  platforms: ['linux/amd64', 'linux/arm64'],
+  push: true,
+  registries: [
+    {
+      address: registry.loginServer,
+      username: registryCredentials.username,
+      password: registryCredentials.password,
+    },
+  ],
+})
+
+const containerGroup = new containerinstance.ContainerGroup(
+  `${prefixName}-container-group`,
+  {
+    resourceGroupName: resourceGroup.name,
+    osType: 'linux',
+    restartPolicy: 'always',
+    imageRegistryCredentials: [
+      {
+        server: registry.loginServer,
+        username: registryCredentials.username,
+        password: registryCredentials.password,
+      },
+    ],
+    containers: [
+      {
+        name: imageName,
+        image: image.ref,
+        ports: [
+          {
+            port: containerPort,
+            protocol: 'tcp',
+          },
+        ],
+        environmentVariables: [
+          {
+            name: 'PORT',
+            value: containerPort.toString(),
+          },
+          {
+            name: 'WEATHER_API_KEY',
+            value: '<your-secret-key>',
+          },
+        ],
+        resources: {
+          requests: {
+            cpu: cpu,
+            memoryInGB: memory,
+          },
+        },
+      },
+    ],
+    ipAddress: {
+      type: containerinstance.ContainerGroupIpAddressType.Public,
+      dnsNameLabel: `${imageName}`,
+      ports: [
+        {
+          port: publicPort,
+          protocol: 'tcp',
+        },
+      ],
+    },
+  },
+)
+
+export const acrServer = registry.loginServer
 export const acrUsername = registryCredentials.username
